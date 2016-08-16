@@ -37,7 +37,7 @@
 #include <ros/ros.h>
 #include <drive_controller/drive_controller_node.h>
 
-#define DATA_REFRESH_FREQ 200
+constexpr int DATA_REFRESH_FREQ = 200;
 
 int main(int argc, char **argv)
 {
