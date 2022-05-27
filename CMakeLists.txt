@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
-project(drive_controller)
+project(md_drive_ros)
 
 set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS} ")
 set(CMAKE_BUILD_TYPE Release)

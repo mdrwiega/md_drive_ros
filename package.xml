@@ -1,13 +1,12 @@
 <package format="2">
-  <name>drive_controller</name>
+  <name>md_drive_ros</name>
   <version>1.0.0</version>
-  <description>The driver for motors controller of mobile robot</description>
-  <author>Michał Drwięga</author>
-  <maintainer email="drwiega.michal@gmail.com">Michał Drwięga</maintainer>
-  <license>BSD</license>
+  <description>The ROS node for MD Drive device</description>
+  <author>Michal Drwiega</author>
+  <maintainer email="drwiega.michal@gmail.com">Micha Drwiega</maintainer>
+  <license>Apache 2.0</license>
   <url type="website">http://www.mdrwiega.com</url>
 
-  <!-- Dependencies which this package needs to build itself. -->
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>roscpp</depend>
