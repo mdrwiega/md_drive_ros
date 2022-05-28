@@ -14,75 +14,64 @@
 
 #include <drive_controller/drive_controller_node.h>
 
+#include <exception>
+
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/UInt16.h>
 #include <std_msgs/Float64.h>
 #include <tf/tf.h>
 
-#include <iostream>
-
 namespace drive_controller {
 
-DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pnh):
-    pnh_(pnh), dyn_srv_(pnh)
+DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pnh)
+  : pnh_(pnh)
 {
-    std::lock_guard<std::mutex> lock(connection_mutex_);
+  // Velocity commands subscription (geometry_msgs/Twist)
+  sub_cmd_vel_ = n.subscribe("cmd_vel", 10, &DriveControllerNode::CmdVelCallback, this);
 
-    // Set callback for dynamic reconfigure server
-    dyn_srv_.setCallback(boost::bind(&DriveControllerNode::reconfigureCb, this, _1, _2));
+  /*sub_cmd_vel_ = n.subscribe("drive_controller/digital_outputs", 10,
+                            &DriveControllerNode::digitalOutputsCb, this);*/
 
-    // Velocity commands subscription (geometry_msgs/Twist)
-    sub_cmd_vel_ = n.subscribe("cmd_vel", 10,
-                               &DriveControllerNode::cmdVelCallback, this);
+  // Odometry data publishing (sensor_msgs/Odom)
+  pub_odom_ = n.advertise<nav_msgs::Odometry>("odom", 1);
 
-    // Velocity commands subscription (std_msgs/UInt8)
-    /*sub_cmd_vel_ = n.subscribe("drive_controller/digital_outputs", 10,
-                             &DriveControllerNode::digitalOutputsCb, this);*/
+  // Digital inputs states publisher
+  pub_digital_inputs_ = n.advertise<std_msgs::UInt8>("digital_inputs", 1);
 
-    // Odometry data publishing (sensor_msgs/Odom)
-    pub_odom_ = n.advertise<nav_msgs::Odometry>("odom", 1);
+  // Status publisher
+  pub_status_ = n.advertise<std_msgs::UInt16 >("drive_status", 1);
 
-    // Digital inputs states publisher
-    pub_digital_inputs_ = n.advertise<std_msgs::UInt8>("digital_inputs", 1);
+  // Motors voltage publisher
+  pub_mot_voltage_ = n.advertise<std_msgs::Float64>("drive_controller/motors_voltage",1);
 
-    // Status publisher
-    pub_status_ = n.advertise<std_msgs::UInt16 >("drive_status", 1);
+  if (mc_api_.ConnectToDevice()) {
+    ROS_INFO("Connected to drive controller device.");
+  }
+  else {
+    ROS_ERROR("HW device connection can't be established.");
+    throw std::runtime_error("Unable to connect to the device.");
+  }
 
-    // Motors voltage publisher
-    pub_mot_voltage_ = n.advertise<std_msgs::Float64>("drive_controller/motors_voltage",1);
+  // Get parameters
+  n.param<std::string>("base_frame_id", base_frame_id_, "base_link");
+  n.param<std::string>("odom_frame_id", odom_frame_id_, "odom");
 
-    // mc_ctrl_.ang_z_vel = 0.0;
-    // mc_ctrl_.lin_x_vel = 0.0;
-
-    if (mc_api_.ConnectToDevice()) {
-      ROS_INFO("Connected to drive controller device.");
-    }
-    else {
-      ROS_ERROR("HW device connection can't be established.");
-    }
-
-    // Get constant ros params values from server params
-    //  n.param<float>("back_wheels_separation", back_wheels_separation_, 1.0);
-    //  n.param<float>("front_wheels_separation", front_wheels_separation_, 1.0);
-    base_frame_id_ = "base_link";
-    odom_frame_id_ = "odom";
-    //  n.param<std::string>("base_frame_id", base_frame_id_, "base_link");
-    //  n.param<std::string>("base_frame_id", odom_frame_id_, "odom");
+  // TODO: Configure motors controller
 }
 
 DriveControllerNode::~DriveControllerNode()
 {
-    mc_api_.DisconnectFromDevice();
+  mc_api_.DisconnectFromDevice();
 
-    sub_cmd_vel_.shutdown();
-    sub_digital_outputs_.shutdown();
-    pub_status_.shutdown();
-    pub_mot_voltage_.shutdown();
-    pub_odom_.shutdown();
-    pub_digital_inputs_.shutdown();
+  sub_cmd_vel_.shutdown();
+  sub_digital_outputs_.shutdown();
+  pub_status_.shutdown();
+  pub_mot_voltage_.shutdown();
+  pub_odom_.shutdown();
+  pub_digital_inputs_.shutdown();
 }
 
-void DriveControllerNode::update()
+void DriveControllerNode::Update()
 {
   // Get and publish status
   auto serialized_msg = mc_api_.GetRawMsgFromDevice(MsgID::GeneralState);
@@ -95,21 +84,43 @@ void DriveControllerNode::update()
   voltage.data = state_msg.motors_voltage;
   pub_mot_voltage_.publish(voltage);
 
-
   // Check if watchdog maximum value exceeded
-  if (++watchdog_cnt_ > 50)
-  {
-      md_drive::SpeedControl ctrl;
-      ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BL)] = 0.0;
-      ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BR)] = 0.0;
-      ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FL)] = 0.0;
-      ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FR)] = 0.0;
-      std::cout << "\n" << ctrl.ToString() << "\n";
-      mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
+  if (++watchdog_cnt_ > 50) {
+    StopMotors();
   }
 }
 
-// void DriveControllerNode::publishData(md_drive::MsgQueue & msgs)
+void DriveControllerNode::CmdVelCallback(const geometry_msgs::Twist & cmd_vel)
+{
+    // TODO: calculate velocities based on kinematics
+    // linear, angular -> motors speeds
+    md_drive::SpeedControl ctrl;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BL)] = 1.0;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BR)] = 1.0;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FL)] = 1.0;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FR)] = 1.0;
+    mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
+
+    // Reset watchdog counter
+    watchdog_cnt_ = 0;
+}
+
+void DigitalOutputsCallback(const std_msgs::UInt8 do_states)
+{
+  throw std::runtime_error(std::string(__func__) + ": Not implemented");
+}
+
+void DriveControllerNode::StopMotors()
+{
+  md_drive::SpeedControl ctrl;
+  for (auto & setpoint : ctrl.setpoints) {
+    setpoint = 0.0;
+  }
+
+  mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
+}
+
+// void DriveControllerNode::publishOdometry(...)
 // {
     // Publish odometry data to topic
     // nav_msgs::Odometry odom;
@@ -153,30 +164,5 @@ void DriveControllerNode::update()
     // transform.transform.rotation = orient;
     // tf_broadcaster_.sendTransform(transform);
 // }
-
-void DriveControllerNode::cmdVelCallback(const geometry_msgs::Twist & cmd_vel)
-{
-    // TODO: calculate velocities based on kinematics
-    // linear, angular -> motors speeds
-    md_drive::SpeedControl ctrl;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BL)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BR)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FL)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FR)] = 1.0;
-    std::cout << "\n" << ctrl.ToString() << "\n";
-    mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
-
-    // Reset watchdog counter
-    watchdog_cnt_ = 0;
-}
-
-void digitalOutputsCb(const std_msgs::UInt8 do_states)
-{
-}
-
-void DriveControllerNode::reconfigureCb(
-        drive_controller::DriveControllerConfig& config, uint32_t level)
-{
-}
 
 } // namespace drive_controller
