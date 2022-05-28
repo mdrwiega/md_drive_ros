@@ -3,7 +3,7 @@
   <version>1.0.0</version>
   <description>The ROS node for MD Drive device</description>
   <author>Michal Drwiega</author>
-  <maintainer email="drwiega.michal@gmail.com">Micha Drwiega</maintainer>
+  <maintainer email="drwiega.michal@gmail.com">Michal Drwiega</maintainer>
   <license>Apache 2.0</license>
   <url type="website">http://www.mdrwiega.com</url>
 

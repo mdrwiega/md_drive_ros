@@ -15,24 +15,22 @@
 #include <ros/ros.h>
 #include <drive_controller/drive_controller_node.h>
 
-constexpr int DATA_REFRESH_FREQ = 200;
+constexpr int loopFrequency = 100;
 
 int main(int argc, char **argv)
 {
- ros::init(argc, argv, "drive_controller");
+  ros::init(argc, argv, "drive_controller");
+
   ros::NodeHandle n;
   ros::NodeHandle pnh("~");
-  
   drive_controller::DriveControllerNode controller(n, pnh);
 
-  ros::Rate rate(DATA_REFRESH_FREQ);
+  ros::Rate rate(loopFrequency);
 
   while (ros::ok())
   {
     ros::spinOnce();
-    controller.readDataFromDevice();
-    controller.writeDataToDevice();
-    controller.publishDataToTopics();
+    controller.update();
     rate.sleep();
   }
 
