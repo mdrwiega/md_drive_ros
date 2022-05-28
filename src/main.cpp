@@ -15,7 +15,7 @@
 #include <ros/ros.h>
 #include <drive_controller/drive_controller_node.h>
 
-constexpr int loopFrequency = 100;
+constexpr int loopFrequency = 1;
 
 int main(int argc, char **argv)
 {
@@ -30,7 +30,7 @@ int main(int argc, char **argv)
   while (ros::ok())
   {
     ros::spinOnce();
-    controller.update();
+    controller.Update();
     rate.sleep();
   }
 

@@ -5,18 +5,15 @@ set(CMAKE_CXX_FLAGS "-std=c++17 ${CMAKE_CXX_FLAGS} ")
 set(CMAKE_BUILD_TYPE Release)
 
 find_package(catkin REQUIRED COMPONENTS
-  roscpp dynamic_reconfigure sensor_msgs cmake_modules tf tf2_ros
+  roscpp sensor_msgs cmake_modules tf tf2_ros
 )
-
-# Dynamic reconfigure config
-generate_dynamic_reconfigure_options(cfg/DriveController.cfg)
 
 find_library(MD_DRIVE_API NAMES md_drive_api)
 
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES DriveControllerNode
-  CATKIN_DEPENDS roscpp dynamic_reconfigure sensor_msgs tf tf2_ros
+  CATKIN_DEPENDS roscpp std_msgs sensor_msgs tf tf2_ros
 )
 
 include_directories(
@@ -28,7 +25,6 @@ add_library(DriveControllerNode
   src/drive_controller_node.cpp
 )
 
-add_dependencies(DriveControllerNode ${PROJECT_NAME}_gencfg)
 target_link_libraries(DriveControllerNode ${catkin_LIBRARIES} ${MD_DRIVE_API})
 
 add_executable(${PROJECT_NAME} src/main.cpp)

@@ -1,11 +1,5 @@
 <launch>
-  <!-- Driver for drive controller -->
   <node name="drive_controller" pkg="drive_controller" type="drive_controller" >
-    <remap from="odom" to="wheels_odom"/>
-  <!--	  	
-	  	<remap from="camera_info" to="/camera/depth/camera_info"/>
-      <rosparam command="load" file="$(find drive_controller)/config/params.yaml" /> -->
+      <rosparam command="load" file="$(find drive_controller)/config/params.yaml" />
 	</node>
 </launch>
-
-
