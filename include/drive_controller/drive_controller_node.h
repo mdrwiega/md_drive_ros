@@ -20,8 +20,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <md_drive_api/md_drive_api.h>
-
-//#define DEBUG_NODE
+#include <drive_controller/odometry.h>
 
 namespace drive_controller {
 
@@ -54,11 +53,13 @@ private:
   void CmdVelCallback(const geometry_msgs::Twist & cmd_vel);
   /**
     * @brief Callback which is called when new digital outputs commands are received.
-    * @param do_states
+    * @param do_states Digital outputs control values.
     */
   void DigitalOutputsCallback(const std_msgs::UInt8 do_states);
 
   void StopMotors();
+
+  void PublishOdometry();
 
   md_drive::MdDriveAPI mc_api_;
 
@@ -75,27 +76,17 @@ private:
   ros::Subscriber sub_cmd_vel_;         ///< Velocity commands subscriber
   ros::Subscriber sub_digital_outputs_; ///< Subscriber for digital outputs ports
 
+  std::shared_ptr<Odometry> odometry; ///< Calculates odometry
+
   float back_wheels_separation_;                 ///< Back robot wheels separation in meters
   float front_wheels_separation_;                ///< Front robot wheels separation in meters
   float wheel_radius_;
 
-  std::string base_frame_id_{"base_link"}; ///< Frame for mobile robot base
-  std::string odom_frame_id_{"odom"};      ///< Frame for odometry
-
-  float cmd_vel_timeout_; ///< Velocity commands timeout in ms
-
-  // Velocities and acceleration limits
-  float linear_velocity_min_;      ///< Minimum linear velocity in m/s
-  float linear_velocity_max_;      ///< Maximum linear velocity in m/s
-  float angular_velocity_min_;     ///< Minimum angular velocity in rad/s
-  float angular_velocity_max_;     ///< Maximum angular velocity in rad/s
-  float linear_acceleration_min_;  ///< Minimum linear acceleration in m/s^2
-  float linear_acceleration_max_;  ///< Maximum linear acceleration in m/s^2
-  float angular_acceleration_min_; ///< Minimum angular acceleration in rad/s^2
-  float angular_acceleration_max_; ///< Maximum angular acceleration in rad/s^2
+  std::string base_frame_id_ = "base_link"; ///< Frame for mobile robot base
+  std::string odom_frame_id_ = "odom";      ///< Frame for odometry
 
   // Simple watchdog which send zero speeds to microcontroller if no new cmd_vel
-  unsigned int watchdog_cnt_{0};
+  unsigned int watchdog_cnt_ = 0;
 };
 
 } // namespace drive_controller
