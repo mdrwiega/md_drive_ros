@@ -21,16 +21,19 @@
 #include <std_msgs/Float64.h>
 #include <tf/tf.h>
 
+#include <md_drive_api/md_drive_api.h>
+#include <md_drive_api/board.h>
+
 namespace drive_controller {
 
 DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pnh)
   : pnh_(pnh)
 {
   // Velocity commands subscription (geometry_msgs/Twist)
-  sub_cmd_vel_ = n.subscribe("cmd_vel", 10, &DriveControllerNode::CmdVelCallback, this);
+  sub_cmd_vel_ = n.subscribe("cmd_vel", 1, &DriveControllerNode::CmdVelCallback, this);
 
-  /*sub_cmd_vel_ = n.subscribe("drive_controller/digital_outputs", 10,
-                            &DriveControllerNode::digitalOutputsCb, this);*/
+  sub_digital_outputs_ = n.subscribe(
+    "digital_outputs", 1, &DriveControllerNode::DigitalOutputsCallback, this);
 
   // Odometry data publishing (sensor_msgs/Odom)
   pub_odom_ = n.advertise<nav_msgs::Odometry>("odom", 1);
@@ -60,6 +63,15 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
   n.param<float>("wheel_radius", wheel_radius_, 1.0f);
 
   // TODO: Configure motors controller
+  md_drive::GeneralConfig general_config;
+  general_config.controllerMode = md_drive::ControllerMode::Speed;
+  for (auto & motor : general_config.enabledMotors)
+  {
+    motor = true;
+  }
+
+  ROS_INFO_STREAM(general_config.ToString() << "\n");
+  mc_api_.SendRawMsgToDevice(SerializeMsg(general_config));
 }
 
 DriveControllerNode::~DriveControllerNode()
@@ -114,9 +126,14 @@ void DriveControllerNode::CmdVelCallback(const geometry_msgs::Twist & cmd_vel)
     watchdog_cnt_ = 0;
 }
 
-void DigitalOutputsCallback(const std_msgs::UInt8 do_states)
+void DriveControllerNode::DigitalOutputsCallback(const std_msgs::UInt8 do_states)
 {
-  throw std::runtime_error(std::string(__func__) + ": Not implemented");
+  md_drive::DigitalOutputsControl ctrl;
+  for (int i = 0; i < DIGITAL_OUTPUTS_NR; ++i) {
+    ctrl.ctrl_DO[i] = do_states.data & (1 << i);
+    ctrl.mask_DO[i] = true;
+  }
+  mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
 }
 
 void DriveControllerNode::StopMotors()
