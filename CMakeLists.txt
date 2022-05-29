@@ -23,6 +23,7 @@ include_directories(
 
 add_library(DriveControllerNode
   src/drive_controller_node.cpp
+  src/odometry.cpp
 )
 
 target_link_libraries(DriveControllerNode ${catkin_LIBRARIES} ${MD_DRIVE_API})

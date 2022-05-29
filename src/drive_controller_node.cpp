@@ -45,7 +45,7 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
   pub_status_ = n.advertise<std_msgs::UInt16 >("drive_status", 1);
 
   // Motors voltage publisher
-  pub_mot_voltage_ = n.advertise<std_msgs::Float64>("drive_controller/motors_voltage",1);
+  pub_mot_voltage_ = n.advertise<std_msgs::Float64>("voltage",1);
 
   if (mc_api_.ConnectToDevice()) {
     ROS_INFO("Connected to drive controller device.");
@@ -72,6 +72,10 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
 
   ROS_INFO_STREAM(general_config.ToString() << "\n");
   mc_api_.SendRawMsgToDevice(SerializeMsg(general_config));
+
+  // Initialize odometry
+  odometry.reset(
+    new Odometry(wheel_radius_, (back_wheels_separation_ + front_wheels_separation_) / 2.0));
 }
 
 DriveControllerNode::~DriveControllerNode()
@@ -98,6 +102,15 @@ void DriveControllerNode::Update()
   std_msgs::Float64 voltage;
   voltage.data = state_msg.motors_voltage;
   pub_mot_voltage_.publish(voltage);
+
+  // Update and publish odometry
+  using md_drive::Motor;
+  const auto left_pos = (state_msg.distance[0] + state_msg.distance[2]) / 2.0;
+  const auto right_pos = (state_msg.distance[1] + state_msg.distance[3]) / 2.0;
+  const auto left_speed = (state_msg.velocity[0] + state_msg.velocity[2]) / 2.0;
+  const auto right_speed = (state_msg.velocity[1] + state_msg.velocity[3]) / 2.0;
+  odometry->Update(left_pos, right_pos, left_speed, right_speed);
+  PublishOdometry();
 
   // Check if watchdog maximum value exceeded
   if (++watchdog_cnt_ > 50) {
@@ -146,49 +159,48 @@ void DriveControllerNode::StopMotors()
   mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
 }
 
-// void DriveControllerNode::publishOdometry(...)
-// {
-    // Publish odometry data to topic
-    // nav_msgs::Odometry odom;
-    // odom.header.stamp = ros::Time::now();
-    // odom.header.frame_id = odom_frame_id_;
+void DriveControllerNode::PublishOdometry()
+{
+    nav_msgs::Odometry odom;
+    odom.header.stamp = ros::Time::now();
+    odom.header.frame_id = odom_frame_id_;
     // Set the odom position and orientation
 
-    // odom.pose.pose.position.x = mc_data_.x_;
-    // odom.pose.pose.position.y = mc_data_.y_;
-    // odom.pose.pose.position.z = 0;
+    odom.pose.pose.position.x = odometry->x;
+    odom.pose.pose.position.y = odometry->y;
+    odom.pose.pose.position.z = 0;
 
-    // geometry_msgs::Quaternion orient = tf::createQuaternionMsgFromYaw(mc_data_.theta_);
-    // odom.pose.pose.orientation = orient;
+    const auto orientation = tf::createQuaternionMsgFromYaw(odometry->theta);
+    odom.pose.pose.orientation = orientation;
 
-    // // Set the velocities
-    // odom.child_frame_id = base_frame_id_;
-    // odom.twist.twist.linear.x = mc_data_.lin_vel_;
-    // odom.twist.twist.linear.y = 0;
-    // odom.twist.twist.linear.z = 0;
-    // odom.twist.twist.angular.x = 0;
-    // odom.twist.twist.angular.y = 0;
-    // odom.twist.twist.angular.z = mc_data_.ang_vel_;
+    // Set the velocities
+    odom.child_frame_id = base_frame_id_;
+    odom.twist.twist.linear.x = odometry->lin_vel;
+    odom.twist.twist.linear.y = 0;
+    odom.twist.twist.linear.z = 0;
+    odom.twist.twist.angular.x = 0;
+    odom.twist.twist.angular.y = 0;
+    odom.twist.twist.angular.z = odometry->ang_vel;
 
-    // odom.pose.covariance[0] = 0.00001;
-    // odom.pose.covariance[7] = 0.00001;
-    // odom.pose.covariance[14] = 1000000000000.0;
-    // odom.pose.covariance[21] = 1000000000000.0;
-    // odom.pose.covariance[28] = 1000000000000.0;
-    // odom.pose.covariance[35] = 0.001;
+    odom.pose.covariance[0] = 0.00001;
+    odom.pose.covariance[7] = 0.00001;
+    odom.pose.covariance[14] = 1000000000000.0;
+    odom.pose.covariance[21] = 1000000000000.0;
+    odom.pose.covariance[28] = 1000000000000.0;
+    odom.pose.covariance[35] = 0.001;
 
-    // pub_odom_.publish(odom);
+    pub_odom_.publish(odom);
 
     // Publish odometry transformations (tf)
-    // geometry_msgs::TransformStamped transform;
-    // transform.header.stamp = odom.header.stamp;
-    // transform.header.frame_id = odom_frame_id_;
-    // transform.child_frame_id = base_frame_id_;
-    // transform.transform.translation.x = odom.pose.pose.position.x;
-    // transform.transform.translation.y = odom.pose.pose.position.y;
-    // transform.transform.translation.z = odom.pose.pose.position.z;
-    // transform.transform.rotation = orient;
-    // tf_broadcaster_.sendTransform(transform);
-// }
+    geometry_msgs::TransformStamped transform;
+    transform.header.stamp = odom.header.stamp;
+    transform.header.frame_id = odom_frame_id_;
+    transform.child_frame_id = base_frame_id_;
+    transform.transform.translation.x = odom.pose.pose.position.x;
+    transform.transform.translation.y = odom.pose.pose.position.y;
+    transform.transform.translation.z = odom.pose.pose.position.z;
+    transform.transform.rotation = orientation;
+    tf_broadcaster_.sendTransform(transform);
+}
 
 } // namespace drive_controller
