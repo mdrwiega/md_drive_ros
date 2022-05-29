@@ -55,6 +55,9 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
   // Get parameters
   n.param<std::string>("base_frame_id", base_frame_id_, "base_link");
   n.param<std::string>("odom_frame_id", odom_frame_id_, "odom");
+  n.param<float>("back_wheels_distance", back_wheels_separation_, 1.0f);
+  n.param<float>("front_wheels_distance", front_wheels_separation_, 1.0f);
+  n.param<float>("wheel_radius", wheel_radius_, 1.0f);
 
   // TODO: Configure motors controller
 }
@@ -92,13 +95,19 @@ void DriveControllerNode::Update()
 
 void DriveControllerNode::CmdVelCallback(const geometry_msgs::Twist & cmd_vel)
 {
-    // TODO: calculate velocities based on kinematics
-    // linear, angular -> motors speeds
+    // Inverse kinematics for differential drive
+    const double v = cmd_vel.linear.x;
+    const double w = cmd_vel.angular.z;
+    const double d = (back_wheels_separation_ + front_wheels_separation_) / 2.0;
+
+    const double left_wheel_speed = (v - w * d / 2) / wheel_radius_;
+    const double right_wheel_speed = (v + w * d / 2) / wheel_radius_;
+
     md_drive::SpeedControl ctrl;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BL)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BR)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FL)] = 1.0;
-    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FR)] = 1.0;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BL)] = left_wheel_speed;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::BR)] = right_wheel_speed;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FL)] = left_wheel_speed;
+    ctrl.setpoints[static_cast<unsigned>(md_drive::Motor::FR)] = right_wheel_speed;
     mc_api_.SendRawMsgToDevice(SerializeMsg(ctrl));
 
     // Reset watchdog counter

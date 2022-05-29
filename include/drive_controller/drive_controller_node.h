@@ -77,6 +77,8 @@ private:
 
   float back_wheels_separation_;                 ///< Back robot wheels separation in meters
   float front_wheels_separation_;                ///< Front robot wheels separation in meters
+  float wheel_radius_;
+
   std::string base_frame_id_{"base_link"}; ///< Frame for mobile robot base
   std::string odom_frame_id_{"odom"};      ///< Frame for odometry
 

@@ -1,1 +1,4 @@
 rate: 1
+back_wheels_distance: 0.257
+front_wheels_distance: 0.257
+wheel_radius: 0.59
