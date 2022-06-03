@@ -1,5 +1,0 @@
-<launch>
-  <node name="drive_controller" pkg="drive_controller" type="drive_controller" >
-      <rosparam command="load" file="$(find drive_controller)/config/params.yaml" />
-	</node>
-</launch>

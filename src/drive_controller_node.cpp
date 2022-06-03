@@ -12,55 +12,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <drive_controller/drive_controller_node.h>
+#include <drive_controller/drive_controller_node.hpp>
 
 #include <exception>
 
-#include <nav_msgs/Odometry.h>
-#include <std_msgs/UInt16.h>
-#include <std_msgs/Float64.h>
-#include <tf/tf.h>
+#include <std_msgs/msg/u_int16.h>
+#include <std_msgs/msg/float64.h>
+#include <geometry_msgs/msg/twist.h>
+#include <nav_msgs/msg/odometry.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <md_drive_api/md_drive_api.h>
 #include <md_drive_api/board.h>
 
 namespace drive_controller {
 
-DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pnh)
-  : pnh_(pnh)
+using namespace std::chrono_literals;
+
+DriveControllerNode::DriveControllerNode()
+: Node("drive_controller")
 {
-  // Velocity commands subscription (geometry_msgs/Twist)
-  sub_cmd_vel_ = n.subscribe("cmd_vel", 1, &DriveControllerNode::CmdVelCallback, this);
+  using std::placeholders::_1;
 
-  sub_digital_outputs_ = n.subscribe(
-    "digital_outputs", 1, &DriveControllerNode::DigitalOutputsCallback, this);
+  // Subscribers
+  sub_cmd_vel_ = this->create_subscription<geometry_msgs::msg::Twist>(
+    "cmd_vel", 1, std::bind(&DriveControllerNode::CmdVelCallback, this, _1));
 
-  // Odometry data publishing (sensor_msgs/Odom)
-  pub_odom_ = n.advertise<nav_msgs::Odometry>("odom", 1);
+  sub_digital_outputs_ = this->create_subscription<std_msgs::msg::UInt8>(
+    "digital_outputs", 1, std::bind(&DriveControllerNode::DigitalOutputsCallback, this, _1));
+
+  // Odometry data publishing
+  pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", 1);
 
   // Digital inputs states publisher
-  pub_digital_inputs_ = n.advertise<std_msgs::UInt8>("digital_inputs", 1);
+  pub_digital_inputs_ = this->create_publisher<std_msgs::msg::UInt8>("digital_inputs", 1);
 
   // Status publisher
-  pub_status_ = n.advertise<std_msgs::UInt16 >("drive_status", 1);
+  pub_status_ = this->create_publisher<std_msgs::msg::UInt16>("drive_status", 1);
 
   // Motors voltage publisher
-  pub_mot_voltage_ = n.advertise<std_msgs::Float64>("voltage",1);
+  pub_mot_voltage_ = this->create_publisher<std_msgs::msg::Float64>("voltage", 1);
+
+  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   if (mc_api_.ConnectToDevice()) {
-    ROS_INFO("Connected to drive controller device.");
+    RCLCPP_INFO_ONCE(this->get_logger(), "Connected to drive controller device.");
   }
   else {
-    ROS_ERROR("HW device connection can't be established.");
+    RCLCPP_ERROR_ONCE(this->get_logger(), "HW device connection can't be established.");
     throw std::runtime_error("Unable to connect to the device.");
   }
 
+  // Declare parameters
+  this->declare_parameter<std::string>("base_frame_id", "base_link");
+  this->declare_parameter<std::string>("odom_frame_id", "odom");
+  this->declare_parameter<float>("back_wheels_distance", 1.0f);
+  this->declare_parameter<float>("front_wheels_distance", 1.0f);
+  this->declare_parameter<float>("wheel_radius", 1.0f);
+
   // Get parameters
-  n.param<std::string>("base_frame_id", base_frame_id_, "base_link");
-  n.param<std::string>("odom_frame_id", odom_frame_id_, "odom");
-  n.param<float>("back_wheels_distance", back_wheels_separation_, 1.0f);
-  n.param<float>("front_wheels_distance", front_wheels_separation_, 1.0f);
-  n.param<float>("wheel_radius", wheel_radius_, 1.0f);
+  this->get_parameter("base_frame_id", base_frame_id_);
+  this->get_parameter("odom_frame_id", odom_frame_id_);
+  this->get_parameter("back_wheels_distance", back_wheels_separation_);
+  this->get_parameter("front_wheels_distance", front_wheels_separation_);
+  this->get_parameter("wheel_radius", wheel_radius_);
 
   // TODO: Configure motors controller
   md_drive::GeneralConfig general_config;
@@ -70,7 +86,7 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
     motor = true;
   }
 
-  ROS_INFO_STREAM(general_config.ToString() << "\n");
+  RCLCPP_INFO_STREAM(this->get_logger(),general_config.ToString() << "\n");
   mc_api_.SendRawMsgToDevice(SerializeMsg(general_config));
 
   // Initialize odometry
@@ -81,13 +97,6 @@ DriveControllerNode::DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pn
 DriveControllerNode::~DriveControllerNode()
 {
   mc_api_.DisconnectFromDevice();
-
-  sub_cmd_vel_.shutdown();
-  sub_digital_outputs_.shutdown();
-  pub_status_.shutdown();
-  pub_mot_voltage_.shutdown();
-  pub_odom_.shutdown();
-  pub_digital_inputs_.shutdown();
 }
 
 void DriveControllerNode::Update()
@@ -95,13 +104,13 @@ void DriveControllerNode::Update()
   // Get and publish status
   auto serialized_msg = mc_api_.GetRawMsgFromDevice(MsgID::GeneralState);
   const auto state_msg = md_drive::DeserializeMsg<md_drive::GeneralState>(serialized_msg);
-  std_msgs::UInt16 status;
+  std_msgs::msg::UInt16 status;
   status.data = static_cast<uint16_t>(state_msg.state_reg0);
-  pub_status_.publish(status);
+  pub_status_->publish(status);
 
-  std_msgs::Float64 voltage;
+  std_msgs::msg::Float64 voltage;
   voltage.data = state_msg.motors_voltage;
-  pub_mot_voltage_.publish(voltage);
+  pub_mot_voltage_->publish(voltage);
 
   // Update and publish odometry
   using md_drive::Motor;
@@ -118,7 +127,7 @@ void DriveControllerNode::Update()
   }
 }
 
-void DriveControllerNode::CmdVelCallback(const geometry_msgs::Twist & cmd_vel)
+void DriveControllerNode::CmdVelCallback(const geometry_msgs::msg::Twist & cmd_vel)
 {
     // Inverse kinematics for differential drive
     const double v = cmd_vel.linear.x;
@@ -139,7 +148,7 @@ void DriveControllerNode::CmdVelCallback(const geometry_msgs::Twist & cmd_vel)
     watchdog_cnt_ = 0;
 }
 
-void DriveControllerNode::DigitalOutputsCallback(const std_msgs::UInt8 do_states)
+void DriveControllerNode::DigitalOutputsCallback(const std_msgs::msg::UInt8 do_states)
 {
   md_drive::DigitalOutputsControl ctrl;
   for (int i = 0; i < DIGITAL_OUTPUTS_NR; ++i) {
@@ -161,8 +170,8 @@ void DriveControllerNode::StopMotors()
 
 void DriveControllerNode::PublishOdometry()
 {
-    nav_msgs::Odometry odom;
-    odom.header.stamp = ros::Time::now();
+    nav_msgs::msg::Odometry odom;
+    odom.header.stamp = this->get_clock()->now();
     odom.header.frame_id = odom_frame_id_;
     // Set the odom position and orientation
 
@@ -170,8 +179,9 @@ void DriveControllerNode::PublishOdometry()
     odom.pose.pose.position.y = odometry->y;
     odom.pose.pose.position.z = 0;
 
-    const auto orientation = tf::createQuaternionMsgFromYaw(odometry->theta);
-    odom.pose.pose.orientation = orientation;
+    tf2::Quaternion q;
+    q.setRPY(0, 0, odometry->theta);
+    odom.pose.pose.orientation = tf2::toMsg(q);
 
     // Set the velocities
     odom.child_frame_id = base_frame_id_;
@@ -189,18 +199,18 @@ void DriveControllerNode::PublishOdometry()
     odom.pose.covariance[28] = 1000000000000.0;
     odom.pose.covariance[35] = 0.001;
 
-    pub_odom_.publish(odom);
+    pub_odom_->publish(odom);
 
     // Publish odometry transformations (tf)
-    geometry_msgs::TransformStamped transform;
+    geometry_msgs::msg::TransformStamped transform;
     transform.header.stamp = odom.header.stamp;
     transform.header.frame_id = odom_frame_id_;
     transform.child_frame_id = base_frame_id_;
     transform.transform.translation.x = odom.pose.pose.position.x;
     transform.transform.translation.y = odom.pose.pose.position.y;
     transform.transform.translation.z = odom.pose.pose.position.z;
-    transform.transform.rotation = orientation;
-    tf_broadcaster_.sendTransform(transform);
+    transform.transform.rotation = odom.pose.pose.orientation;
+    tf_broadcaster_->sendTransform(transform);
 }
 
 } // namespace drive_controller

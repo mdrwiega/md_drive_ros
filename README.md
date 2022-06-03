@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The ROS node for motor controller of wheeled mobile robots.
+The ROS 2 node for motor controller of wheeled mobile robots.
 More details about the device could be found [here](https://mdrwiega.com/dc-motors-controller-for-mobile-platforms-with-ros-support/).
 
 The node allows to communicate with the controller device.
@@ -26,10 +26,15 @@ sudo apt install libhidapi-dev
 
 - Install from sources the MD Drive API package [md_drive_api](https://github.com/mdrwiega/md_drive_api).
 
-## Build
+## Build (ROS 2 Galactic)
 
-- Clone to the ROS workspace.
-- ROS1: Build the workspace with `catkin_make`.
+- Create ROS 2 workspace.
+- Build: `colcon build`
+
+## Run
+
+- ros2 launch md_drive_ros controller_launch.py
+- ros2 run md_drive_ros md_drive_ros_exe
 
 ## Features
 
