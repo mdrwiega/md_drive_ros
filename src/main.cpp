@@ -12,27 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ros/ros.h>
-#include <drive_controller/drive_controller_node.h>
+#include <rclcpp/rclcpp.hpp>
 
-constexpr int loopFrequency = 1;
+#include <drive_controller/drive_controller_node.hpp>
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "drive_controller");
+  rclcpp::init(argc, argv);
 
-  ros::NodeHandle n;
-  ros::NodeHandle pnh("~");
-  drive_controller::DriveControllerNode controller(n, pnh);
-
-  ros::Rate rate(loopFrequency);
-
-  while (ros::ok())
-  {
-    ros::spinOnce();
-    controller.Update();
-    rate.sleep();
-  }
+  auto node = std::make_shared<drive_controller::DriveControllerNode>();
+  rclcpp::spin(node);
+  rclcpp::shutdown();
 
   return 0;
 }

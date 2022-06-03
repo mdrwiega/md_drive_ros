@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef DRIVE_CONTROLLER_DRIVE_CONTROLLER_NODE_HPP_
+#define DRIVE_CONTROLLER_DRIVE_CONTROLLER_NODE_HPP_
 
-#include <ros/ros.h>
-#include <std_msgs/UInt8.h>
-#include <geometry_msgs/Twist.h>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/u_int16.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <md_drive_api/md_drive_api.h>
@@ -27,10 +31,10 @@ namespace drive_controller {
 /**
  *  ROS node that communicates with the MD Drive device.
  */
-class DriveControllerNode
+class DriveControllerNode : public rclcpp::Node
 {
 public:
-  DriveControllerNode(ros::NodeHandle& n, ros::NodeHandle& pnh);
+  DriveControllerNode();
   ~DriveControllerNode();
 
   /**
@@ -50,12 +54,12 @@ private:
     *
     * @param cmd_vel Velocities commands
     */
-  void CmdVelCallback(const geometry_msgs::Twist & cmd_vel);
+  void CmdVelCallback(const geometry_msgs::msg::Twist & cmd_vel);
   /**
     * @brief Callback which is called when new digital outputs commands are received.
     * @param do_states Digital outputs control values.
     */
-  void DigitalOutputsCallback(const std_msgs::UInt8 do_states);
+  void DigitalOutputsCallback(const std_msgs::msg::UInt8 do_states);
 
   void StopMotors();
 
@@ -63,30 +67,36 @@ private:
 
   md_drive::MdDriveAPI mc_api_;
 
-  ros::NodeHandle pnh_;                ///< Private node handler
-
   // Publishers
-  ros::Publisher  pub_status_;         ///< Drive controller status publisher
-  ros::Publisher  pub_odom_;           ///< Odometry data publisher
-  ros::Publisher  pub_mot_voltage_;    ///< Motors voltage publisher
-  ros::Publisher  pub_digital_inputs_; ///< Digital inputs states publisher
-  tf2_ros::TransformBroadcaster tf_broadcaster_; ///< Broadcaster for tf publishing
+  /// Drive controller status publisher
+  rclcpp::Publisher<std_msgs::msg::UInt16>::SharedPtr pub_status_;
+   ///< Odometry data publisher
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
+  ///< Motors voltage publisher
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_mot_voltage_;
+  ///< Digital inputs states publisher
+  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr pub_digital_inputs_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // Subscribers
-  ros::Subscriber sub_cmd_vel_;         ///< Velocity commands subscriber
-  ros::Subscriber sub_digital_outputs_; ///< Subscriber for digital outputs ports
+  /// Velocity commands subscriber
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_vel_;
+  /// Subscriber for digital outputs ports
+  rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr sub_digital_outputs_;
 
   std::shared_ptr<Odometry> odometry; ///< Calculates odometry
 
-  float back_wheels_separation_;                 ///< Back robot wheels separation in meters
-  float front_wheels_separation_;                ///< Front robot wheels separation in meters
+  // Node parameters
+  std::string base_frame_id_;
+  std::string odom_frame_id_;
+  float back_wheels_separation_;
+  float front_wheels_separation_;
   float wheel_radius_;
-
-  std::string base_frame_id_ = "base_link"; ///< Frame for mobile robot base
-  std::string odom_frame_id_ = "odom";      ///< Frame for odometry
 
   // Simple watchdog which send zero speeds to microcontroller if no new cmd_vel
   unsigned int watchdog_cnt_ = 0;
 };
 
 } // namespace drive_controller
+
+#endif // DRIVE_CONTROLLER_DRIVE_CONTROLLER_NODE_HPP_
